@@ -1,0 +1,120 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+//
+// ======================================================================
+// Ghostlist — Private Allowlist Mint Gate (Level 1)
+// ======================================================================
+//
+// PRIVACY MODEL
+// ------------
+// PUBLIC  (on-chain, visible to everyone):
+//   - merkleRoot:       Field — the Merkle root committing to the full allowlist
+//                         (the list itself is NEVER stored on-chain)
+//   - usedNullifiers:   Set<Bytes<32>> — prevents double-minting by tracking
+//                         which nullifiers have been consumed
+//   - totalMinted:      Counter — total number of successful mints
+//
+// PRIVATE (witness-only, NEVER on-chain):
+//   - secret:           Bytes<32> — the user's private allowlist key
+//   - merklePath:       MerkleTreePath<20, Bytes<32>> — Merkle membership proof
+//                         proving that persistentHash(secret) is a leaf under
+//                         merkleRoot
+//
+// DISCLOSED (proves eligibility without revealing identity):
+//   - nullifier:        Bytes<32> — persistentHash(leaf) = hash of the hashed
+//                         secret. This proves the user knows a secret whose
+//                         hash is in the tree, AND prevents double-minting —
+//                         WITHOUT revealing which leaf in the tree is theirs.
+//
+// SECURITY PROPERTIES
+// ------------------
+// 1. Privacy:  An observer sees only the nullifier. They cannot reverse it
+//              to find the secret or the leaf, and cannot link it to any
+//              specific tree entry.
+// 2. Soundness: A non-member cannot mint because they cannot produce a valid
+//               Merkle path to the committed root.
+// 3. No double-mint: Each nullifier can be used only once. A second attempt
+//                    with the same secret is rejected.
+// ======================================================================
+//
+
+// ── Public Ledger State ──────────────────────────────────────────
+
+/// The Merkle root committing to the full allowlist.
+/// Only this root is stored on-chain — the list entries themselves are
+/// never revealed.
+export ledger merkleRoot: Field;
+
+/// Set of nullifiers that have already been used.
+/// Prevents double-minting without revealing which list entry was used.
+export ledger usedNullifiers: Set<Bytes<32>>;
+
+/// Total number of successful mints.
+export ledger totalMinted: Counter;
+
+// ── Private Witnesses (Circuit Inputs) ───────────────────────────
+
+/// The user's private allowlist key (32 bytes / 256 bits).
+/// Returned by the TypeScript driver — NEVER committed to the ledger.
+witness secret(): Bytes<32>;
+
+/// Merkle membership path proving the user's hashed secret is a leaf
+/// in the allowlist tree. Depth 20 supports up to 2^20 ≈ 1 million entries.
+witness merklePath(): MerkleTreePath<20, Bytes<32>>;
+
+// ── Constructor ──────────────────────────────────────────────────
+
+/// Initialize the contract with a Merkle root that commits to the
+/// initial allowlist.
+constructor(initialRoot: Field) {
+    merkleRoot = disclose(initialRoot);
+}
+
+// ── Mint Circuit ─────────────────────────────────────────────────
+
+/// Allow a verified allowlist member to mint.
+///
+/// The circuit proves, in zero knowledge:
+///   1. The user knows a secret whose hash is a leaf in the committed
+///      Merkle tree (allowlist membership).
+///   2. The user has not minted before (nullifier is fresh).
+///
+/// The ONLY value disclosed on-chain is the derived nullifier.
+/// The secret and Merkle path remain private.
+export circuit mint(): [] {
+    // 1. Read private witnesses
+    const userSecret = secret();
+    const userPath = merklePath();
+
+    // 2. Compute the leaf: hash of the user's secret.
+    //    The Merkle tree stores persistentHash(secret) as leaves.
+    const leaf = persistentHash<Bytes<32>>(userSecret);
+
+    // 3. Verify the path corresponds to this leaf.
+    //    The path's leaf field must match the hash we just computed,
+    //    proving the path was constructed for THIS secret.
+    assert(leaf == userPath.leaf, "Merkle path leaf does not match secret hash");
+
+    // 4. Verify Merkle membership: compute the root from the path
+    //    and check it matches the public on-chain root.
+    const computedRoot = merkleTreePathRoot<20, Bytes<32>>(userPath);
+    assert(computedRoot.field == merkleRoot, "Not on allowlist — invalid Merkle proof");
+
+    // 5. Derive the nullifier by hashing the leaf.
+    //    This is a distinct value from the leaf itself, so an observer
+    //    cannot link the disclosed nullifier to a specific tree leaf.
+    const nullifier = persistentHash<Bytes<32>>(leaf);
+
+    // 6. Reject if this nullifier was already used (double-mint prevention).
+    assert(!usedNullifiers.member(disclose(nullifier)), "Already minted — nullifier already used");
+
+    // 7. Record the nullifier as used.
+    //    **disclose()** ensures the nullifier is intentionally revealed.
+    //    The secret and Merkle path are NOT disclosed — they remain private.
+    usedNullifiers.insert(disclose(nullifier));
+
+    // 8. Increment the total mint counter.
+    totalMinted += 1;
+}
