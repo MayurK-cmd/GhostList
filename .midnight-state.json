@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "activeNetwork": "preprod",
+  "wallets": {
+    "preview": {
+      "seed": "45140ff5cc47f69c5e982f2f579e32ebe31f66323b8f8fca37a7dc0d430e5895",
+      "createdAt": "2026-07-15T14:25:40.988Z"
+    },
+    "preprod": {
+      "seed": "c8837b323a35af4b317378cd5a4f99c5cb272c592bdcc226621da273b6cf9417",
+      "createdAt": "2026-07-15T15:14:35.627Z"
+    }
+  },
+  "deployments": {}
+}
