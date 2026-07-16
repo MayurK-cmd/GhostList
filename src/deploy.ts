@@ -76,8 +76,13 @@ if (!fs.existsSync(contractPath)) {
 
 const HelloWorld = await import(pathToFileURL(contractPath).href);
 
+const witnesses = {
+  secret: (ctx: any) => { throw new Error('secret witness must be provided by caller'); },
+  merklePath: (ctx: any) => { throw new Error('merklePath witness must be provided by caller'); },
+};
+
 const compiledContract = CompiledContract.make('allowlist_stub', HelloWorld.Contract).pipe(
-  CompiledContract.withVacantWitnesses,
+  CompiledContract.withWitnesses(witnesses),
   CompiledContract.withCompiledFileAssets(zkConfigPath),
 );
 

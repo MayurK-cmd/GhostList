@@ -55,8 +55,12 @@ async function main() {
   const contractPath = path.join(zkConfigPath, 'contract', 'index.js');
   if (!fs.existsSync(contractPath)) fail('Compiled contract missing — run `npm run compile`.');
   const HelloWorld = await import(pathToFileURL(contractPath).href);
+  const witnesses = {
+    secret: (ctx: any) => { throw new Error('secret witness must be provided'); },
+    merklePath: (ctx: any) => { throw new Error('merklePath witness must be provided'); },
+  };
   const compiledContract = CompiledContract.make('allowlist_stub', HelloWorld.Contract).pipe(
-    CompiledContract.withVacantWitnesses,
+    CompiledContract.withWitnesses(witnesses),
     CompiledContract.withCompiledFileAssets(zkConfigPath),
   );
 

@@ -9,8 +9,9 @@ Built for the **Midnight Builder Challenge (Level 1)** on [Rise In](https://rise
 
 | Network | Address |
 |---------|---------|
-| Preview | *Deploy in progress* |
-| Preprod  | *Deploy in progress* |
+| Undeployed (local devnet) | `6545c1ff1fadcb695d8617ad418c77ad2b703cbe892822e37798281438c83776` |
+| Preview | *Not deployed* |
+| Preprod  | *Not deployed* |
 
 ## What This Does
 

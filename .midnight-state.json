@@ -11,5 +11,11 @@
       "createdAt": "2026-07-15T15:14:35.627Z"
     }
   },
-  "deployments": {}
+  "deployments": {
+    "undeployed": {
+      "address": "6545c1ff1fadcb695d8617ad418c77ad2b703cbe892822e37798281438c83776",
+      "deployer": "mn_addr_undeployed1h3ssm5ru2t6eqy4g3she78zlxn96e36ms6pq996aduvmateh9p9sk96u7s",
+      "deployedAt": "2026-07-16T06:12:26.552Z"
+    }
+  }
 }
