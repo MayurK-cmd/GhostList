@@ -63,7 +63,7 @@ This Level 1 contract (`allowlist_stub.compact`) establishes the core privacy pr
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/MayurK-cmd/GhostList.git
 cd ghostlist
 
 # Install dependencies
