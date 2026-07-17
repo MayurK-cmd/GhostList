@@ -64,7 +64,7 @@ This Level 1 contract (`allowlist_stub.compact`) establishes the core privacy pr
 ```bash
 # Clone the repository
 git clone https://github.com/MayurK-cmd/GhostList.git
-cd ghostlist
+cd GhostList
 
 # Install dependencies
 npm install
@@ -123,11 +123,9 @@ Ghostlist is designed as a mint-gate for NFT/token drops that proves allowlist m
 
 ## Screenshots
 
-<!-- TODO: Add compile output and contract address screenshots -->
+![Compile output — circuits compiled successfully](screenshots/Screenshot%202026-07-17%20at%204.57.49%E2%80%AFPM.png)
 
-- [ ] Compile output
-- [ ] Contract address on block explorer
-- [ ] Test results
+![Contract deployed with address shown](screenshots/Screenshot%202026-07-17%20at%204.58.34%E2%80%AFPM.png)
 
 ---
 
