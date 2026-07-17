@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "activeNetwork": "preprod",
+  "activeNetwork": "preview",
   "wallets": {
     "preview": {
-      "seed": "45140ff5cc47f69c5e982f2f579e32ebe31f66323b8f8fca37a7dc0d430e5895",
+      "seed": "3df3eed71d2a3e0a9ff829e262599c18322bd17c1244c41dbe23b4743c5295772dd60e0dc7c282c2b4ac4592c4248c06e85ea12e35005b31ab02560795a61620",
       "createdAt": "2026-07-15T14:25:40.988Z"
     },
     "preprod": {
-      "seed": "c8837b323a35af4b317378cd5a4f99c5cb272c592bdcc226621da273b6cf9417",
+      "seed": "3df3eed71d2a3e0a9ff829e262599c18322bd17c1244c41dbe23b4743c5295772dd60e0dc7c282c2b4ac4592c4248c06e85ea12e35005b31ab02560795a61620",
       "createdAt": "2026-07-15T15:14:35.627Z"
     }
   },
@@ -16,6 +16,11 @@
       "address": "6545c1ff1fadcb695d8617ad418c77ad2b703cbe892822e37798281438c83776",
       "deployer": "mn_addr_undeployed1h3ssm5ru2t6eqy4g3she78zlxn96e36ms6pq996aduvmateh9p9sk96u7s",
       "deployedAt": "2026-07-16T06:12:26.552Z"
+    },
+    "preview": {
+      "address": "a4021ce19d60ca3bb659126adc8c2ce5f9dcde46de5f7c88c6c654b48cf6b9d4",
+      "deployer": "mn_addr_preview1efg4lt8ftffh58ex23anwlq9rdy36t29nf8uf0qhke6gq08249nsem3gz6",
+      "deployedAt": "2026-07-17T11:24:32.472Z"
     }
   }
 }
