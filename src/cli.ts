@@ -1,5 +1,11 @@
 /**
- * CLI for interacting with Ghostlist contract
+ * CLI for interacting with Ghostlist contract (allowlist_stub).
+ *
+ * Commands:
+ *   1. Mint — submit a real proof via the proof server
+ *   2. Read state — show merkleRoot, totalMinted, usedNullifiers
+ *   3. Check wallet balance
+ *   4. Exit
  */
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
@@ -44,27 +50,78 @@ if (!fs.existsSync(contractPath)) {
 
 const HelloWorld = await import(pathToFileURL(contractPath).href);
 
+// ─── Merkle tree data ────────────────────────────────────────────────────
+//
+// Load the precomputed allowlist entry so we can supply real witnesses to
+// the mint circuit. Generate with: `npx tsx scripts/precompute-tree.ts`
+interface MerklePathEntry {
+  sibling: string;
+  goes_left: boolean;
+}
+interface TreeData {
+  secret: string;
+  leaf: string;
+  root: string;
+  path: MerklePathEntry[];
+}
+
+const TREE_DATA_PATH = path.resolve(__dirname, '..', 'frontend', 'public', 'tree.json');
+function loadTreeData(): TreeData | null {
+  try {
+    const raw = fs.readFileSync(TREE_DATA_PATH, 'utf-8');
+    return JSON.parse(raw) as TreeData;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Witness helpers ─────────────────────────────────────────────────────
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = hex.match(/.{1,2}/g);
+  if (!bytes) throw new Error(`Invalid hex: ${hex}`);
+  return new Uint8Array(bytes.map((b) => parseInt(b, 16)));
+}
+
+function createWitnesses(tree: TreeData) {
+  const secretBytes = hexToBytes(tree.secret);
+  const leafBytes = hexToBytes(tree.leaf);
+
+  return {
+    secret: (ctx: any): [any, Uint8Array] => {
+      return [ctx.privateState, secretBytes];
+    },
+    merklePath: (ctx: any): [any, any] => {
+      const merklePath = tree.path.map((entry) => ({
+        sibling: { field: BigInt(entry.sibling) },
+        goes_left: entry.goes_left,
+      }));
+      return [ctx.privateState, { leaf: leafBytes, path: merklePath }];
+    },
+  };
+}
+
+const witnesses = createWitnesses(loadTreeData() ?? {
+  secret: '',
+  leaf: '',
+  root: '0',
+  path: [],
+});
+
 const compiledContract = CompiledContract.make('allowlist_stub', HelloWorld.Contract).pipe(
-  CompiledContract.withVacantWitnesses,
+  CompiledContract.withWitnesses(witnesses),
   CompiledContract.withCompiledFileAssets(zkConfigPath),
 );
 
-// ─── Providers ─────────────────────────────────────────────────────────────────
+// ─── Providers ────────────────────────────────────────────────────────────
 
 async function createProviders(walletCtx: WalletContext) {
-  // The SDK requires the private-state password to be at least 16 characters.
-  // The default below is a placeholder for local devnet only — set a strong
-  // password via PRIVATE_STATE_PASSWORD when you move to a non-local target.
   const privateStatePassword = process.env.PRIVATE_STATE_PASSWORD?.trim() || 'Local-Devnet-Development-Placeholder-1';
 
   const walletProvider = {
-    // In Midnight.js 4.1.x the WalletProvider interface returns the key objects
-    // (CoinPublicKey / EncPublicKey) directly — no longer hex strings.
     getCoinPublicKey: () => walletCtx.shieldedSecretKeys.coinPublicKey,
     getEncryptionPublicKey: () => walletCtx.shieldedSecretKeys.encryptionPublicKey,
     async balanceTx(tx: any, ttl?: Date) {
-      // balanceUnboundTransaction -> finalizeRecipe is the complete balancing
-      // path in wallet-sdk 1.x; the earlier explicit signRecipe step is gone.
       const recipe = await walletCtx.wallet.balanceUnboundTransaction(
         tx,
         { shieldedSecretKeys: walletCtx.shieldedSecretKeys, dustSecretKey: walletCtx.dustSecretKey },
@@ -92,7 +149,7 @@ async function createProviders(walletCtx: WalletContext) {
   };
 }
 
-// ─── Main CLI ──────────────────────────────────────────────────────────────────
+// ─── Main CLI ─────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
@@ -132,15 +189,10 @@ async function main() {
     clearInterval(syncInterval);
     process.stdout.write('\r  ✓ Synced with network.                                      \n');
 
-    // Persist sync state so the next run doesn't have to redo this work.
     await persistWalletState(network, walletCtx);
     const balance = state.unshielded.balances[unshieldedToken().raw] ?? 0n;
     console.log(`  Balance: ${balance.toLocaleString()} tNight\n`);
 
-    // Surface a faucet hint when a public-network wallet has 0 tNIGHT.
-    // Reads (option 2) work without funds, but writes (option 1) need DUST
-    // generated from registered NIGHT — without this hint the next failure
-    // mode is a confusing "Insufficient Funds" deep inside the tx builder.
     if (balance === 0n && network !== 'undeployed' && networkConfig.faucet) {
       const address = walletCtx.unshieldedKeystore.getBech32Address();
       console.log('  ⚠ Wallet has no tNight. Fund it from the faucet to send transactions:');
@@ -165,8 +217,8 @@ async function main() {
     let running = true;
     while (running) {
       console.log('─── Menu ───────────────────────────────────────────────────────');
-      console.log('  1. Store a message');
-      console.log('  2. Read current message');
+      console.log('  1. Mint (submit proof via proof server)');
+      console.log('  2. Read contract state');
       console.log('  3. Check wallet balance');
       console.log('  4. Exit\n');
 
@@ -174,32 +226,38 @@ async function main() {
 
       switch (choice.trim()) {
         case '1': {
-          const message = await rl.question('  Enter your message: ');
-          console.log('\n  Submitting transaction (this may take 30-60 seconds)...');
+          const tree = loadTreeData();
+          if (!tree) {
+            console.log('\n  ❌ tree.json not found. Run: npx tsx scripts/precompute-tree.ts > frontend/public/tree.json\n');
+            break;
+          }
+          console.log('\n  Submitting mint transaction (this may take 30-60 seconds)...');
           try {
-            const tx = await deployed.callTx.storeMessage(message);
-            console.log(`\n  ✅ Message stored: "${message}"`);
-            console.log(`  Transaction ID: ${tx.public.txId}`);
+            const tx = await deployed.callTx.mint();
+            console.log(`\n  ✅ Mint successful!`);
+            console.log(`  Tx ID: ${tx.public.txId}`);
             console.log(`  Block height: ${tx.public.blockHeight}\n`);
           } catch (error) {
-            console.error('\n  ❌ Failed:', error instanceof Error ? error.message : error);
+            console.error('\n  ❌ Mint failed:', error instanceof Error ? error.message : error);
           }
           break;
         }
 
         case '2': {
-          console.log('\n  Reading message from blockchain...');
+          console.log('\n  Reading contract state from blockchain...');
           try {
             const contractState = await providers.publicDataProvider.queryContractState(deployment.address);
             if (contractState) {
               const ledgerState = HelloWorld.ledger(contractState.data);
-              const message = Buffer.from(ledgerState.message).toString();
-              console.log(`\n  📋 Current message: "${message}"\n`);
+              console.log(`\n  📋 Contract State:`);
+              console.log(`     Merkle root:   ${ledgerState.merkleRoot.toString()}`);
+              console.log(`     Total minted:  ${ledgerState.totalMinted.toString()}`);
+              console.log(`     Nullifiers:    ${ledgerState.usedNullifiers.size} used\n`);
             } else {
-              console.log('\n  📋 No message found (contract state empty)\n');
+              console.log('\n  📋 No contract state found\n');
             }
           } catch (error) {
-            console.error('\n  ❌ Failed:', error instanceof Error ? error.message : error);
+            console.error('\n  ❌ Failed to read state:', error instanceof Error ? error.message : error);
           }
           break;
         }
@@ -210,7 +268,7 @@ async function main() {
           const currentBalance = currentState.unshielded.balances[unshieldedToken().raw] ?? 0n;
           const dustBalance = currentState.dust.balance(new Date());
           console.log(`\n  tNight: ${currentBalance.toLocaleString()}`);
-          console.log(`  DUST: ${dustBalance.toLocaleString()}\n`);
+          console.log(`  DUST:   ${dustBalance.toLocaleString()}\n`);
           break;
         }
 
