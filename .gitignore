@@ -1,2 +1,5 @@
 .claude
 node_modules
+.midnight-state.json
+.mcp.json
+.midnight-state.json
