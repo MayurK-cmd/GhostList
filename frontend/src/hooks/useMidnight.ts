@@ -46,7 +46,7 @@ function isV3API(w: unknown): w is LaceV3WalletAPI {
 
 export function WalletProvider({
   children,
-  defaultNetworkId = "preprod",
+  defaultNetworkId = "preview",
 }: {
   children: ReactNode;
   defaultNetworkId?: string;

@@ -27,6 +27,13 @@ globalThis.WebSocket = WebSocket;
 // allowlist_stub contract has no witnesses, so its private state is empty ({}).
 const PRIVATE_STATE_ID = 'helloWorldPrivateState';
 
+// ─── Merkle tree data ────────────────────────────────────────────────────
+//
+// The frontend reads `frontend/public/tree.json` to get the secret + path
+// for a precomputed allowlist leaf.  We reuse the same root so the circuit
+// assertion passes.  Regenerate with: `cd ghostlist-deploy && npx tsx ../scripts/precompute-tree.ts`
+const TREE_DATA_PATH = path.resolve(__dirname, '..', 'frontend', 'public', 'tree.json');
+
 // ─── Network configuration ─────────────────────────────────────────────────────
 //
 // Resolved from --network flag, .midnight-state.json, or defaulting to
@@ -294,10 +301,23 @@ async function main() {
       // allowlist_stub's no-arg constructor. (Statically-typed contracts can omit
       // args entirely; this script loads the contract dynamically, so the
       // conditional args type widens to any[] and an explicit [] is required.)
+      // Load the Merkle root from the precomputed tree so the on-chain
+      // contract matches what the frontend expects.  If the file is missing,
+      // fall back to 0n (the old default — circuit assertions will fail).
+      let merkleRoot = 0n;
+      try {
+        const treeRaw = fs.readFileSync(TREE_DATA_PATH, 'utf-8');
+        const tree = JSON.parse(treeRaw) as { root: string };
+        merkleRoot = BigInt(tree.root);
+        console.log(`  Using Merkle root: ${merkleRoot}`);
+      } catch {
+        console.warn('  ⚠ tree.json not found — deploying with root=0n. Regenerate with scripts/precompute-tree.ts');
+      }
+
       deployed = await deployContract(providers, {
         compiledContract: compiledContract as any,
         // Ghostlist constructor takes initialRoot: Field
-        args: [0n],
+        args: [merkleRoot],
         privateStateId: PRIVATE_STATE_ID,
         initialPrivateState: {},
       });
