@@ -27,13 +27,6 @@ globalThis.WebSocket = WebSocket;
 // allowlist_stub contract has no witnesses, so its private state is empty ({}).
 const PRIVATE_STATE_ID = 'helloWorldPrivateState';
 
-// ─── Merkle tree data ────────────────────────────────────────────────────
-//
-// The frontend reads `frontend/public/tree.json` to get the secret + path
-// for a precomputed allowlist leaf.  We reuse the same root so the circuit
-// assertion passes.  Regenerate with: `cd ghostlist-deploy && npx tsx ../scripts/precompute-tree.ts`
-const TREE_DATA_PATH = path.resolve(__dirname, '..', 'frontend', 'public', 'tree.json');
-
 // ─── Network configuration ─────────────────────────────────────────────────────
 //
 // Resolved from --network flag, .midnight-state.json, or defaulting to
@@ -75,6 +68,13 @@ async function waitForProofServer(maxAttempts = 60, delayMs = 2000): Promise<boo
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const zkConfigPath = path.resolve(__dirname, '..', 'contracts', 'managed', 'allowlist_stub');
 const contractPath = path.join(zkConfigPath, 'contract', 'index.js');
+
+// ─── Merkle tree data ────────────────────────────────────────────────────
+//
+// The frontend reads `frontend/public/tree.json` to get the secret + path
+// for a precomputed allowlist leaf.  We reuse the same root so the circuit
+// assertion passes.  Regenerate with: `cd ghostlist-deploy && npx tsx ../scripts/precompute-tree.ts`
+const TREE_DATA_PATH = path.resolve(__dirname, '..', 'frontend', 'public', 'tree.json');
 
 if (!fs.existsSync(contractPath)) {
   console.error('\n❌ Contract not compiled! Run: npm run compile\n');
