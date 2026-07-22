@@ -62,6 +62,52 @@ function midnightSSRCompatPlugin(): Plugin {
   };
 }
 
+/**
+ * Patch @midnight-ntwrk/onchain-runtime-v3's browser entry to use top-level
+ * await for WASM init instead of synchronous `import * as wasm from "./.wasm"`.
+ *
+ * The package uses old wasm-bindgen which does:
+ *   import * as wasm from "./midnight_onchain_runtime_wasm_bg.wasm";
+ *   wasm.__wbindgen_start();
+ *
+ * Vite treats .wasm imports as async init functions, so `wasm` is a function,
+ * not a module instance. This plugin rewrites the entry to use fetch +
+ * WebAssembly.instantiate with top-level await, mirroring the Node entry
+ * pattern (midnight_onchain_runtime_wasm_fs.js).
+ */
+function midnightWasmCompatPlugin(): Plugin {
+  const WASM_ENTRY_REGEX =
+    /node_modules[\\/]@midnight-ntwrk[\\/]onchain-runtime-v3[\\/]midnight_onchain_runtime_wasm\.js$/;
+
+  return {
+    name: "midnight-wasm-compat",
+    enforce: "post",
+    transform(code, id) {
+      if (!WASM_ENTRY_REGEX.test(id)) return null;
+      // Ensure we only apply to files running in the browser
+      // (SSR/build should use the node entry instead)
+      return {
+        code: `
+import * as __wasm_bg_exports from "./midnight_onchain_runtime_wasm_bg.js";
+export * from "./midnight_onchain_runtime_wasm_bg.js";
+import { __wbg_set_wasm } from "./midnight_onchain_runtime_wasm_bg.js";
+
+const __wasmUrl = new URL("./midnight_onchain_runtime_wasm_bg.wasm", import.meta.url);
+const __response = await fetch(__wasmUrl);
+const __wasmBytes = await __response.arrayBuffer();
+const __imports = { "./midnight_onchain_runtime_wasm_bg.js": __wasm_bg_exports };
+const __result = await WebAssembly.instantiate(__wasmBytes, __imports);
+const __wasm = __result.instance.exports;
+
+__wbg_set_wasm(__wasm);
+__wasm.__wbindgen_start();
+        `,
+        map: null,
+      };
+    },
+  };
+}
+
 export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
@@ -72,7 +118,7 @@ export default defineConfig({
     },
   },
   vite: {
-    plugins: [midnightSSRCompatPlugin()],
+    plugins: [midnightSSRCompatPlugin(), midnightWasmCompatPlugin()],
     // Externalize heavy Midnight packages from SSR — they're loaded only
     // from browser click handlers via dynamic import() at runtime.
     ssr: {

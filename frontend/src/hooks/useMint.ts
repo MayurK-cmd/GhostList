@@ -56,7 +56,7 @@ interface TreeData {
 
 const MINTED_KEY = "ghostlist:minted";
 const CONTRACT_ADDRESS =
-  "a4021ce19d60ca3bb659126adc8c2ce5f9dcde46de5f7c88c6c654b48cf6b9d4";
+  "419ea2292c9de6c985089369904b1e4ed5dcf96e45c8ea2cfce71da4eeaa62d7";
 
 // --------------------------------------------------------------------------
 // Mock allowlist check (kept for backward compat — real on-chain
