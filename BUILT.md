@@ -2,7 +2,7 @@
 
 > **Level 1** of the Midnight Builder Challenge — Private Allowlist Mint Gate
 >
-> Deployed to **Preview** testnet ✓
+> Deployed to **Preview** testnet ✓ — Live demo at [ghostlist-rho.vercel.app](https://ghostlist-rho.vercel.app)
 
 ---
 
@@ -12,6 +12,13 @@
 
 A zero-knowledge private allowlist mint gate written in Compact language for the Midnight Network.
 
+### Circuits
+
+| Circuit | Purpose |
+|---------|---------|
+| `constructor(initialRoot)` | Initialize the contract with the allowlist Merkle root |
+| `mint()` | Prove allowlist membership in ZK and mint |
+
 ### Privacy Model
 
 | Visibility | Data |
@@ -19,13 +26,6 @@ A zero-knowledge private allowlist mint gate written in Compact language for the
 | **Public** (on-chain) | `merkleRoot` (Field), `usedNullifiers` (Set\<Bytes\<32\>\>), `totalMinted` (Counter) |
 | **Private** (witnesses) | `secret` (Bytes\<32\>), `merklePath` (MerkleTreePath\<20, Bytes\<32\>\>) |
 | **Disclosed** | `nullifier` — proves membership without revealing identity |
-
-### Circuits
-
-| Circuit | Purpose |
-|---------|---------|
-| `constructor(initialRoot)` | Initialize the contract with the allowlist Merkle root |
-| `mint()` | Prove allowlist membership in ZK and mint |
 
 ### Security Properties
 
@@ -56,90 +56,121 @@ All **4/4 tests passing**:
 
 | Field | Value |
 |-------|-------|
-| **Contract Address** | `a4021ce19d60ca3bb659126adc8c2ce5f9dcde46de5f7c88c6c654b48cf6b9d4` |
-| **Deployer Address** | `mn_addr_preview1efg4lt8ftffh58ex23anwlq9rdy36t29nf8uf0qhke6gq08249nsem3gz6` |
-| **Deployed At** | 2026-07-17T11:24:32.472Z |
-| **tNIGHT Balance** | 5,000,000,000,000 (raw) |
-| **Block Explorer** | Check on [explorer](https://preview.midnightexplorer.com/) |
-
-### Undeployed (Local Devnet)
-
-| Field | Value |
-|-------|-------|
-| **Contract Address** | `6545c1ff1fadcb695d8617ad418c77ad2b703cbe892822e37798281438c83776` |
-| **Deployer** | `mn_addr_undeployed1h3ssm5ru...` |
+| **Contract Address** | `0x953eae12528f06fcda523264f0e426501f91fa9245e76dee8a6fe66f885b1632` |
+| **Deployer** | `mn_addr_preview1efg4lt8ftffh58ex23anwlq9rdy36t29nf8uf0qhke6gq08249nsem3gz6` |
+| **Merkle Tree** | 500-entry multi-leaf depth-20 sparse tree |
+| **Tree Root** | `7956799017384263079554096761475090569954816895386770660524833229856540226662` |
+| **Block Explorer** | [Preview Explorer](https://explorer.preview.midnight.network/ledger/contracts) |
 
 ---
 
-## 4. Source Files
+## 4. Frontend (dApp)
+
+**Stack:** TanStack Start (React 19 + Vite 8 + TanStack Router + Nitro SSR)  
+**Deployed:** [ghostlist-rho.vercel.app](https://ghostlist-rho.vercel.app) (Vercel)
+
+### Key Files
 
 | File | Purpose |
 |------|---------|
-| `contracts/allowlist_stub.compact` | The smart contract source |
-| `contracts/managed/allowlist_stub/` | Compiled contract artifacts |
-| `tests/allowlist_stub.test.ts` | 4/4 passing test suite |
-| `src/deploy.ts` | Standard deploy script |
-| `src/deploy-verbose.ts` | Deploy with emission logging (better for sync debugging) |
+| `frontend/src/hooks/useMidnight.ts` | React context (`WalletProvider`) wrapping real `window.midnight.mnLace` |
+| `frontend/src/hooks/useWallet.ts` | Thin wrapper around `useMidnight()` |
+| `frontend/src/hooks/useMint.ts` | Full mint flow: proof server → wallet → contract. Falls back to demo mock |
+| `frontend/src/routes/mint.tsx` | Mint page — connect wallet, prove, mint |
+| `frontend/src/components/site/GhostCard.tsx` | Animated mint card with status states |
+| `frontend/src/components/site/ProofPanel.tsx` | Privacy label: "Proved without revealing your identity" |
+| `frontend/src/components/site/Navbar.tsx` | Connect/disconnect with error toasts |
+| `frontend/src/lib/contract/createProviders.ts` | Wires wallet + indexer + proof server + ZK config |
+| `frontend/src/lib/contract/browserZkConfigProvider.ts` | Fetches ZK artifacts from app's `/keys/` and `/zkir/` |
+| `frontend/src/lib/contract/inMemoryPrivateStateProvider.ts` | In-memory private state for browser |
+| `frontend/public/tree.json` | Precomputed 500-entry Merkle tree |
+
+### Mint Flow
+
+1. User connects Lace wallet (Preview network)
+2. Load Merkle tree data from `/tree.json` (500 entries)
+3. Pick the first non-spent entry (tracked via `localStorage` index pointer)
+4. Build dynamic witnesses for that entry (secret + Merkle path)
+5. Proof server generates ZK proof
+6. Wallet balances + submits the transaction via Midnight.js
+7. On chain error "Already minted" — auto-advance to the next entry and retry
+
+---
+
+## 5. CLI Tool
+
+**File:** `src/cli.ts`
+
+Interactive CLI mint tool that uses the same multi-leaf Merkle tree:
+
+- Lazy-loads tree data (BOM-safe JSON loading)
+- Creates fresh `CompiledContract` per entry with dynamic witnesses
+- Tries entries sequentially, skips already-spent ones via error detection
+- Reports "all spent" when every leaf is consumed
+
+---
+
+## 6. Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/precompute-tree.ts` | Generates 500-entry Merkle tree with secrets, leaves, and paths |
+| `src/deploy.ts` | Standard deploy script (Preview/Preprod) |
+| `src/cli.ts` | CLI mint tool |
 | `src/check-balance.ts` | Wallet balance checker |
 | `src/get-address.ts` | Quick wallet address generator |
-| `src/cli.ts` | CLI for interacting with deployed contract |
-| `src/network.ts` | Network config (undeployed/preview/preprod endpoints) |
+| `src/network.ts` | Network config (undeployed/preview/preprod) |
 | `src/wallet.ts` | Wallet creation + key derivation |
 | `src/wallet-state.ts` | Wallet state persistence |
 | `src/setup.ts` | Local devnet setup script |
-| `docker-compose.yml` | Local devnet (node + indexer + proof-server) |
 | `scripts/e2e-check.ts` | End-to-end verification of deployed contract |
 
 ---
 
-## 5. Network Configurations
+## 7. Network Configurations
 
 | Network | Indexer | RPC Node | Faucet |
 |---------|---------|----------|--------|
-| **Undeployed** | `http://127.0.0.1:8088/api/v4/graphql` | `ws://127.0.0.1:9944` | None |
 | **Preview** | `https://indexer.preview.midnight.network/api/v4/graphql` | `https://rpc.preview.midnight.network` | [Faucet](https://midnight-tmnight-preview.nethermind.dev) |
 | **Preprod** | `https://indexer.preprod.midnight.network/api/v4/graphql` | `https://rpc.preprod.midnight.network` | [Faucet](https://midnight-tmnight-preprod.nethermind.dev) |
 
 ---
 
-## 6. Quick Reference
+## 8. Quick Reference
 
 ```bash
+# Frontend dev
+cd frontend
+npm run dev
+
+# Frontend build
+npm run build
+
 # Compile contract
 npm run compile
 
 # Run tests
 npm test
 
-# Deploy to network
+# Generate fresh Merkle tree
+npx tsx scripts/precompute-tree.ts > frontend/public/tree.json
+
+# Deploy to Preview
 export MIDNIGHT_WALLET_SEED="<hex-seed>"
-npx tsx src/deploy.ts --network preview    # Preview
-npx tsx src/deploy.ts --network preprod    # Preprod
+npx tsx src/deploy.ts --network preview
 
-# Check balance
-npx tsx src/check-balance.ts --network preview
-
-# Start proof server (needed for deploy)
-docker compose -f docker-compose.yml up -d proof-server
+# Mint via CLI
+npx tsx src/cli.ts --network preview
 ```
 
 ---
 
-## 7. Git History (10 commits)
+## 9. Known Issues
 
-```
-72006f8 contract deployed
-f537b8e windows issue, trying on mac
-2ad73f8 minor issues in deploying
-18e1291 tests
-7f86349 init
-16e7a2e level 1 - completed
-bb272c0 fixed
-ae60ec3 readme
-d171168 readme
-8362eab readme
-```
+1. **Proof server required for real proving** — The frontend falls back to a demo mock if the proof server is unavailable (no error, just random hash). For real ZK proofs, run `docker compose up -d proof-server`.
+2. **Wallet needs tNIGHT on Preview** — The deployer wallet is funded with 5,000 tNIGHT. New wallets need the faucet.
+3. **500-entry tree limit** — Once all 500 entries are spent, the contract needs re-deploying with a fresh tree.
 
 ---
 
-*Last updated: 2026-07-17*
+*Last updated: 2026-07-22*

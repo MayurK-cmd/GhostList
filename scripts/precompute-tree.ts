@@ -1,8 +1,9 @@
 /**
- * Precompute a valid Merkle tree for the allowlist_stub contract.
+ * Precompute a Merkle tree with N random secrets for the allowlist_stub contract.
  *
- * Builds a depth-20 tree where all leaves except the first are zeros.
- * Outputs secret + Merkle path for the first leaf, plus the tree root.
+ * Builds a depth-20 sparse Merkle tree. The first N leaves (positions 0..N-1)
+ * are populated with random secrets; the remaining 2^20 - N leaves are zeros.
+ * Outputs all N entries with their Merkle paths, plus the tree root.
  *
  * Usage:
  *   cd ghostlist-deploy && npx tsx ../scripts/precompute-tree.ts > ../frontend/public/tree.json
@@ -18,14 +19,17 @@ const cr = await import('@midnight-ntwrk/compact-runtime');
 
 const Field = cr.CompactTypeField;
 const Bytes32 = new cr.CompactTypeBytes(32);
+const Bytes6 = new cr.CompactTypeBytes(6);
 const LeafPreimageType = new (class {
-  alignment() { return Bytes32.alignment().concat(Bytes32.alignment()); }
-  fromValue(v: any) { return { domain_sep: Bytes32.fromValue(v), data: Bytes32.fromValue(v) }; }
-  toValue(v: any) { return Bytes32.toValue(v.domain_sep).concat(Bytes32.toValue(v.data)); }
+  alignment() { return Bytes6.alignment().concat(Bytes32.alignment()); }
+  fromValue(v: any) { return { domain_sep: Bytes6.fromValue(v), data: Bytes32.fromValue(v) }; }
+  toValue(v: any) { return Bytes6.toValue(v.domain_sep).concat(Bytes32.toValue(v.data)); }
 })();
 const Vector2Field = new cr.CompactTypeVector(2, Field);
 
 const DOMAIN_SEP_LH = new Uint8Array([109, 100, 110, 58, 108, 104]); // "mdn:lh"
+const DEPTH = 20;
+const N_ENTRIES = 500;
 
 // ─── Hash helpers ───────────────────────────────────────────────────────
 
@@ -43,47 +47,79 @@ function hashPair(left: bigint, right: bigint): bigint {
   return BigInt(cr.transientHash(Vector2Field, [left, right]));
 }
 
-// ─── Build a Merkle tree with one non-zero leaf ────────────────────────
-
-const DEPTH = 20;
+// ─── Build a sparse Merkle tree with N non-zero leaves ─────────────────
 
 function main() {
-  // 1. Generate a random 32-byte secret
-  const secret = randomBytes(32);
+  // 1. Generate N random secrets and compute their leaf hashes
+  const secrets: Uint8Array[] = Array.from({ length: N_ENTRIES }, () => randomBytes(32));
+  const leafHashes: Uint8Array[] = secrets.map((s) => hashLeaf(s));
+  const leafDigests: bigint[] = leafHashes.map((l) => hashLeafDigest(l));
 
-  // 2. Compute the leaf hash
-  const leaf = hashLeaf(secret);
-  let current = hashLeafDigest(leaf);
-
-  // 3. Compute the "zero subtree" hashes (all-zero leaves)
+  // 2. Compute zero subtree hashes
+  const zeroLeaf = new Uint8Array(32);
   const zeroSubtrees: bigint[] = new Array(DEPTH);
-  const zeroLeafHash = hashLeaf(new Uint8Array(32));
-  zeroSubtrees[0] = hashLeafDigest(zeroLeafHash);
+  zeroSubtrees[0] = hashLeafDigest(hashLeaf(zeroLeaf));
   for (let i = 1; i < DEPTH; i++) {
     zeroSubtrees[i] = hashPair(zeroSubtrees[i - 1], zeroSubtrees[i - 1]);
   }
 
-  // 4. Build the path for leaf 0: at each level, sibling is the zero subtree,
-  //    and goes_left = true (our leaf is the left child at every fork)
-  const path = [];
-  for (let level = 0; level < DEPTH; level++) {
-    path.push({
-      sibling: { field: zeroSubtrees[level] },
-      goes_left: true,
-    });
-    current = hashPair(current, zeroSubtrees[level]);
+  // 3. Build the tree bottom-up, tracking only nodes that have at least
+  //    one non-zero leaf descendant.  Keys are "level:position".
+  const nodes = new Map<string, bigint>();
+
+  // Level 0 — leaf digests
+  for (let i = 0; i < N_ENTRIES; i++) {
+    nodes.set(`0:${i}`, leafDigests[i]);
   }
 
-  const root = current;
+  // Levels 1..DEPTH — internal nodes
+  for (let level = 1; level <= DEPTH; level++) {
+    // Collect parent positions from non-zero nodes at the previous level
+    const parents = new Set<number>();
+    for (const key of nodes.keys()) {
+      const [lvl, pos] = key.split(':').map(Number);
+      if (lvl === level - 1) parents.add(pos >> 1);
+    }
+    for (const parentPos of parents) {
+      const key = `${level}:${parentPos}`;
+      if (nodes.has(key)) continue;
+      const left  = nodes.get(`${level - 1}:${parentPos * 2}`) ?? zeroSubtrees[level - 1];
+      const right = nodes.get(`${level - 1}:${parentPos * 2 + 1}`) ?? zeroSubtrees[level - 1];
+      nodes.set(key, hashPair(left, right));
+    }
+  }
+
+  const root = nodes.get(`${DEPTH}:0`)!;
+
+  // 4. Build path for each leaf
+  const entries: any[] = [];
+  for (let i = 0; i < N_ENTRIES; i++) {
+    const path: any[] = [];
+    for (let level = 0; level < DEPTH; level++) {
+      // Sibling position at this level
+      const sibPos = (i >> level) ^ 1;
+      const sibKey = `${level}:${sibPos}`;
+      const sibling = nodes.get(sibKey) ?? zeroSubtrees[level];
+      // goes_left = true  → sibling is left child (our node is right child)
+      // goes_left = false → sibling is right child (our node is left child)
+      // goes_left = true  → our value is the left child (sibling is right) → hashPair(our, sibling)
+      // goes_left = false → our value is the right child (sibling is left) → hashPair(sibling, our)
+      path.push({
+        sibling: sibling.toString(),
+        goes_left: ((i >> level) & 1) === 0,
+      });
+    }
+    entries.push({
+      secret: Buffer.from(secrets[i]).toString('hex'),
+      leaf: Buffer.from(leafHashes[i]).toString('hex'),
+      path,
+    });
+  }
 
   const output = {
-    secret: Buffer.from(secret).toString('hex'),
-    leaf: Buffer.from(leaf).toString('hex'),
     root: root.toString(),
-    path: path.map(e => ({
-      sibling: e.sibling.field.toString(),
-      goes_left: e.goes_left,
-    })),
+    count: N_ENTRIES,
+    entries,
   };
 
   process.stdout.write(JSON.stringify(output, null, 2) + '\n');

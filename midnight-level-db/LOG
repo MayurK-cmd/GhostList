@@ -1,7 +1,0 @@
-2026/07/21-21:47:46.520372 16fad7000 Recovering log #42
-2026/07/21-21:47:46.520386 16fad7000 Level-0 table #45: started
-2026/07/21-21:47:46.520474 16fad7000 Level-0 table #45: 342 bytes OK
-2026/07/21-21:47:46.520713 16fad7000 Delete type=3 #40
-2026/07/21-21:47:46.520737 16fad7000 Delete type=0 #42
-2026/07/21-21:47:46.520797 16fbef000 Moved #45 to level-1 342 bytes OK: files[ 4 7 0 0 0 0 0 ]
-2026/07/21-21:47:46.520844 16fbef000 Moved #35 to level-1 472 bytes OK: files[ 3 8 0 0 0 0 0 ]

@@ -5,13 +5,32 @@
 
 Built for the **Midnight Builder Challenge (Level 1)** on [Rise In](https://risein.com).
 
+---
+
+## Live Demo
+
+**→ [ghostlist-rho.vercel.app](https://ghostlist-rho.vercel.app)**
+
+Connect your Lace wallet (Preview network) and mint a Ghost with a single click.  
+The entire mint happens in-browser — your secret never leaves your device.
+
+---
+
+## Demo Video
+
+in /demo-vid/
+
+---
 ## Contract Address
 
 | Network | Address |
 |---------|---------|
-| Undeployed (local devnet) | `6545c1ff1fadcb695d8617ad418c77ad2b703cbe892822e37798281438c83776` |
-| Preview | `a4021ce19d60ca3bb659126adc8c2ce5f9dcde46de5f7c88c6c654b48cf6b9d4` |
-| Preprod  | *Not deployed* |
+| **Preview** | `0x953eae12528f06fcda523264f0e426501f91fa9245e76dee8a6fe66f885b1632` |
+| Preprod | *Skipped — devs confirmed Preprod is unstable* |
+
+Verify on the [Midnight Preview Explorer](https://explorer.preview.midnight.network/ledger/contracts).
+
+---
 
 ## What This Does
 
@@ -23,6 +42,16 @@ This Level 1 contract (`allowlist_stub.compact`) establishes the core privacy pr
 - A **nullifier set** prevents double-minting
 - Users prove membership via zero-knowledge circuits
 - Only the derived nullifier is disclosed — never the secret or the path
+
+### How It Works
+
+1. **Setup**: A Merkle tree of 500 random secrets is built (depth 20, sparse). Only the root is deployed on-chain.
+2. **Connect**: A user connects their Lace Midnight wallet (Preview network).
+3. **Prove**: The browser picks an unused leaf from the precomputed tree, builds a Merkle witness, and the Midnight proof server generates a ZK proof that the user knows a secret whose hash is a leaf in the committed tree.
+4. **Mint**: The proof + nullifier are submitted to the Midnight chain. The contract verifies the Merkle path is valid and unique (nullifier not previously seen), then mints.
+5. **Privacy guaranteed**: The chain records only the nullifier — a one-way hash that cannot be reversed to the secret, linked to a specific leaf, or traced back to an identity.
+
+---
 
 ## Privacy Model
 
@@ -43,23 +72,48 @@ This Level 1 contract (`allowlist_stub.compact`) establishes the core privacy pr
 2. **Soundness**: A non-member cannot mint because they cannot produce a valid Merkle path to the committed root.
 3. **No double-mint**: Each nullifier can be used only once.
 
-## Tech Stack
+---
 
-- **Language**: [Compact](https://docs.midnight.network/compact/reference/lang-ref) — Midnight's zero-knowledge smart contract language
-- **Runtime**: [@midnight-ntwrk/compact-runtime](https://www.npmjs.com/package/@midnight-ntwrk/compact-runtime) v0.15.0
-- **SDK**: Midnight.js + Wallet SDK
-- **Proof Server**: `midnightnetwork/proof-server` (Docker)
-- **Node.js**: v22+
-- **Package Manager**: npm
+## Frontend App
 
-## Prerequisites
+The frontend is a [TanStack Start](https://start.tanstack.com/) app (React 19 + Vite 8 + TanStack Router + Nitro SSR) deployed on Vercel.
+
+### Prerequisites
+
+- [Lace Midnight wallet](https://github.com/midnightntwrk/lace) browser extension
+- Wallet funded on **Preview** network (5,000 tNIGHT available from faucet)
+- Lace set to **Preview** network (right-click Lace → Settings → Network)
+
+### Local Dev
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` and connect your Lace wallet.
+
+### Build for production
+
+```bash
+cd frontend
+npm run build
+npm run preview
+```
+
+---
+
+## Smart Contract Development
+
+### Prerequisites
 
 - [Node.js](https://nodejs.org/) v22 or later
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for proof server)
 - [Compact compiler](https://github.com/midnightntwrk/compact/releases) (Linux/macOS binary; use WSL on Windows)
 - A funded wallet on the target network (Preview or Preprod)
 
-## Setup
+### Setup
 
 ```bash
 # Clone the repository
@@ -75,15 +129,17 @@ npm run compile
 # Start the proof server (Docker)
 docker run -p 6300:6300 midnightnetwork/proof-server
 
-# Generate a wallet address and fund it
-npm run get-address -- --network preprod
-# Visit the faucet URL printed, fund the address, then:
+# Precompute a fresh Merkle tree (500 entries)
+npx tsx scripts/precompute-tree.ts > frontend/public/tree.json
 
-# Deploy
-npm run deploy -- --network preprod
+# Deploy — exports MIDNIGHT_WALLET_SEED first
+npx tsx src/deploy.ts --network preview
+
+# Mint via CLI
+npx tsx src/cli.ts --network preview
 ```
 
-## Run Tests
+### Run Tests
 
 ```bash
 npm test
@@ -95,38 +151,60 @@ The test suite covers:
 3. The same secret cannot mint twice (nullifier reuse blocked)
 4. The private secret and Merkle path never appear in any test output
 
+---
+
 ## Project Structure
 
 ```
 ghostlist/
 ├── contracts/
 │   └── allowlist_stub.compact   ← The Compact contract
-├── contracts/managed/           ← Compiled output (circuits + keys)
-├── src/                         ← Deploy scripts
+├── contracts/managed/           ← Compiled output (circuits + keys) — gitignored
+├── src/                         ← Deploy scripts, CLI, wallet helpers
+│   ├── deploy.ts                ← Contract deployment
+│   ├── cli.ts                   ← CLI mint tool
+│   └── wallet.ts                ← Wallet creation + key derivation
 ├── tests/
-│   └── allowlist_stub.test.ts   ← Test suite
-├── .github/workflows/          ← CI/CD (coming in Level 3)
-├── package.json
-├── tsconfig.json
+│   └── allowlist_stub.test.ts   ← Test suite (4/4 passing)
+├── scripts/
+│   └── precompute-tree.ts       ← Multi-entry Merkle tree generator
+├── frontend/                    ← TanStack Start dApp
+│   ├── src/hooks/
+│   │   ├── useMidnight.ts       ← WalletProvider (real Lace integration)
+│   │   ├── useMint.ts           ← Mint hook (proof server + wallet submit)
+│   │   └── useWallet.ts         ← Wallet state wrapper
+│   ├── src/routes/
+│   │   └── mint.tsx             ← Mint page UI
+│   ├── src/lib/contract/        ← Browser Midnight.js provider stack
+│   └── public/                  ← Static assets (ZK artifacts, compiled contract, tree)
+├── docker-compose.yml           ← Local devnet (node + indexer + proof-server)
 └── README.md
 ```
 
-## Initial Idea
+---
 
-Ghostlist is designed as a mint-gate for NFT/token drops that proves allowlist membership via zero-knowledge proofs instead of publishing the allowlist on-chain. Traditional allowlists leak who's on them — creating targeting, doxxing, and front-running risk for early supporters. Ghostlist commits only a Merkle root of the allowlist on-chain; eligible users mint by proving membership with a private witness, and a nullifier (not their identity) is recorded to prevent double-minting. The result: a useful, reusable on-chain primitive for private gated access.
+## Intended Future Levels
 
-**Future levels** will add:
-- Token minting (shielded tokens)
-- Off-chain allowlist management
-- A frontend dApp
-- CI/CD with automated testing
-
-## Screenshots
-
-![Compile output — circuits compiled successfully](screenshots/Screenshot%202026-07-17%20at%204.57.49%E2%80%AFPM.png)
-
-![Contract deployed with address shown](screenshots/Screenshot%202026-07-17%20at%204.58.34%E2%80%AFPM.png)
+- **Level 2**: Token minting (shielded tokens via Midnight's native assets)
+- **Level 3**: Off-chain allowlist management + CI/CD
+- **Level 4**: NFT minting gated by the same ZK allowlist proof
 
 ---
 
-Built for the [Midnight Builder Challenge](https://risein.com) — Level 1
+## Grant Submission Checklist
+
+| Requirement | Status |
+|-------------|--------|
+| Lace wallet connect / disconnect | ✅ |
+| Circuit called successfully from the frontend | ✅ |
+| Observable privacy behavior (ZK proof, nullifier disclosure) | ✅ |
+| Contract deployed to verifiable address | ✅ Preview: `0x953eae12528f06fcda523264f0e426501f91fa9245e76dee8a6fe66f885b1632` |
+| Public GitHub repository | ✅ [github.com/MayurK-cmd/GhostList](https://github.com/MayurK-cmd/GhostList) |
+| Live demo link | ✅ [ghostlist-rho.vercel.app](https://ghostlist-rho.vercel.app) |
+| 8+ meaningful commits | ✅ 18 commits |
+| README documenting privacy claim | ✅ (this document) |
+| Demo video | in /demo-vid/ |
+
+---
+
+Built for the [Midnight Builder Challenge](https://risein.com) — Level 2

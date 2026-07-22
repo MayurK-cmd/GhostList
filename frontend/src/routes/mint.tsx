@@ -40,9 +40,12 @@ function MintPage() {
         "not-connected": "Connect your Lace wallet to continue.",
         "not-on-allowlist": "This wallet isn't on the allowlist.",
         "already-minted": "This wallet has already minted a Ghost.",
+        "all-entries-spent": "All allowlist entries have been used. Contact the drop organizer.",
+        "mint-failed": "The mint transaction failed. Check the console for details.",
         unknown: "Something went sideways while generating the proof.",
       };
-      toast.error("Can't mint", { description: map[mint.error] });
+      const realMsg = typeof window !== "undefined" ? (window as any).__mintError : null;
+      toast.error("Can't mint", { description: realMsg ?? map[mint.error] ?? mint.error });
     }
     if (mint.status === "proving" || mint.status === "minting") {
       notified.current = false;
@@ -81,7 +84,6 @@ function MintPage() {
                 proving={proving}
                 status={mint.status}
                 error={mint.error}
-                alreadyMinted={mint.alreadyMinted}
                 onProve={mint.proveAndMint}
                 onReset={mint.reset}
               />
@@ -123,7 +125,6 @@ function MintControls(props: {
   proving: boolean;
   status: string;
   error: string | null;
-  alreadyMinted: boolean;
   onProve: () => void;
   onReset: () => void;
 }) {
@@ -170,7 +171,7 @@ function MintControls(props: {
             </ol>
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
-            <MagneticButton onClick={props.onProve} disabled={props.proving || props.alreadyMinted}>
+            <MagneticButton onClick={props.onProve} disabled={props.proving}>
               {props.proving && <Loader2 className="h-4 w-4 animate-spin" />}
               {btnLabel}
             </MagneticButton>
@@ -203,12 +204,18 @@ function ErrorNote({ error, onReset }: { error: string; onReset: () => void }) {
       body: "Connect your Lace wallet to build a proof.",
     },
     "not-on-allowlist": {
-      title: "Not on the allowlist",
-      body: "This wallet's key doesn't map to any leaf in the current Merkle tree. If you think this is wrong, check with the drop's organizers — Ghostlist can't tell them who you are.",
+      title: "Allowlist entry unavailable",
+      body: "The proof didn't match any valid entry in the on-chain Merkle tree. This can happen if the tree was regenerated after the contract was deployed. Try refreshing the page — if it persists, the contract may need re-deploying with the latest tree.",
     },
     "already-minted": {
       title: "Already minted",
       body: "The nullifier for this entry has been spent. That's the anti-double-mint guarantee doing its job.",
+    },
+    "mint-failed": {
+      title: "Mint transaction failed",
+      body: typeof window !== "undefined" && (window as any).__mintError
+        ? (window as any).__mintError
+        : "The contract call reverted. Check the browser console for details.",
     },
     unknown: {
       title: "Proof failed",

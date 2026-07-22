@@ -12,6 +12,7 @@ import { stdin, stdout } from 'node:process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { WebSocket } from 'ws';
 import { Buffer } from 'buffer';
 
@@ -50,30 +51,7 @@ if (!fs.existsSync(contractPath)) {
 
 const HelloWorld = await import(pathToFileURL(contractPath).href);
 
-// ─── Merkle tree data ────────────────────────────────────────────────────
-//
-// Load the precomputed allowlist entry so we can supply real witnesses to
-// the mint circuit. Generate with: `npx tsx scripts/precompute-tree.ts`
-interface MerklePathEntry {
-  sibling: string;
-  goes_left: boolean;
-}
-interface TreeData {
-  secret: string;
-  leaf: string;
-  root: string;
-  path: MerklePathEntry[];
-}
-
-const TREE_DATA_PATH = path.resolve(__dirname, '..', 'frontend', 'public', 'tree.json');
-function loadTreeData(): TreeData | null {
-  try {
-    const raw = fs.readFileSync(TREE_DATA_PATH, 'utf-8');
-    return JSON.parse(raw) as TreeData;
-  } catch {
-    return null;
-  }
-}
+// ─── Witness helpers
 
 // ─── Witness helpers ─────────────────────────────────────────────────────
 
@@ -83,35 +61,41 @@ function hexToBytes(hex: string): Uint8Array {
   return new Uint8Array(bytes.map((b) => parseInt(b, 16)));
 }
 
-function createWitnesses(tree: TreeData) {
-  const secretBytes = hexToBytes(tree.secret);
-  const leafBytes = hexToBytes(tree.leaf);
+function createWitnesses(entry: TreeEntry) {
+  const secretBytes = hexToBytes(entry.secret);
+  const leafBytes = hexToBytes(entry.leaf);
 
   return {
     secret: (ctx: any): [any, Uint8Array] => {
       return [ctx.privateState, secretBytes];
     },
     merklePath: (ctx: any): [any, any] => {
-      const merklePath = tree.path.map((entry) => ({
-        sibling: { field: BigInt(entry.sibling) },
-        goes_left: entry.goes_left,
+      const merklePath = entry.path.map((e) => ({
+        sibling: { field: BigInt(e.sibling) },
+        goes_left: e.goes_left,
       }));
       return [ctx.privateState, { leaf: leafBytes, path: merklePath }];
     },
   };
 }
 
-const witnesses = createWitnesses(loadTreeData() ?? {
-  secret: '',
-  leaf: '',
-  root: '0',
-  path: [],
-});
+// Load tree data once; rebuild witnesses dynamically per mint attempt.
+let _treeData: TreeData | null | undefined; // undefined = not yet loaded, null = failed
+function getTreeData(): TreeData | null {
+  if (_treeData === undefined) _treeData = loadTreeData();
+  return _treeData;
+}
 
-const compiledContract = CompiledContract.make('allowlist_stub', HelloWorld.Contract).pipe(
-  CompiledContract.withWitnesses(witnesses),
-  CompiledContract.withCompiledFileAssets(zkConfigPath),
-);
+// Entry index for the next mint attempt. Incremented on "already minted".
+let _nextEntryIndex = 0;
+
+// Lazily re-create CompiledContract with a fresh witness for a given entry.
+function makeCompiledContract(entry: TreeEntry) {
+  return CompiledContract.make('allowlist_stub', HelloWorld.Contract).pipe(
+    CompiledContract.withWitnesses(createWitnesses(entry)),
+    CompiledContract.withCompiledFileAssets(zkConfigPath),
+  );
+}
 
 // ─── Providers ────────────────────────────────────────────────────────────
 
@@ -200,18 +184,22 @@ async function main() {
       console.log(`     Wallet address: ${address}\n`);
     }
 
-    // Setup providers and connect to contract
-    console.log('  Connecting to contract...');
+    // Setup providers (shared across mint attempts)
     const providers = await createProviders(walletCtx);
 
-    const deployed: any = await findDeployedContract(providers, {
-      compiledContract: compiledContract as any,
-      contractAddress: deployment.address,
-      privateStateId: PRIVATE_STATE_ID,
-      initialPrivateState: {},
-    });
+    // Connect to contract with the first tree entry (lazy — will reconnect
+    // with the correct entry per mint attempt).
+    async function connectWithEntry(entry: TreeEntry) {
+      const cc = makeCompiledContract(entry);
+      return await findDeployedContract(providers, {
+        compiledContract: cc as any,
+        contractAddress: deployment.address,
+        privateStateId: PRIVATE_STATE_ID,
+        initialPrivateState: {},
+      }) as any;
+    }
 
-    console.log('  ✅ Connected!\n');
+    console.log('  ✅ Providers ready!\n');
 
     // Interactive CLI loop
     let running = true;
@@ -226,19 +214,44 @@ async function main() {
 
       switch (choice.trim()) {
         case '1': {
-          const tree = loadTreeData();
-          if (!tree) {
-            console.log('\n  ❌ tree.json not found. Run: npx tsx scripts/precompute-tree.ts > frontend/public/tree.json\n');
+          let tree = getTreeData();
+          if (!tree || !tree.entries || tree.entries.length === 0) {
+            console.log('\n  ❌ tree.json not found or empty. Run: npx tsx scripts/precompute-tree.ts > frontend/public/tree.json\n');
             break;
           }
-          console.log('\n  Submitting mint transaction (this may take 30-60 seconds)...');
-          try {
-            const tx = await deployed.callTx.mint();
-            console.log(`\n  ✅ Mint successful!`);
-            console.log(`  Tx ID: ${tx.public.txId}`);
-            console.log(`  Block height: ${tx.public.blockHeight}\n`);
-          } catch (error) {
-            console.error('\n  ❌ Mint failed:', error instanceof Error ? error.message : error);
+
+          let success = false;
+          for (let i = 0; i < tree.entries.length; i++) {
+            const entryIndex = (_nextEntryIndex + i) % tree.entries.length;
+            const entry = tree.entries[entryIndex];
+
+            console.log(`\n  Trying entry ${entryIndex + 1}/${tree.entries.length}...`);
+            try {
+              const deployed = await connectWithEntry(entry);
+              const tx = await deployed.callTx.mint();
+              console.log(`\n  ✅ Mint successful!`);
+              console.log(`  Tx ID: ${tx.public.txId}`);
+              console.log(`  Block height: ${tx.public.blockHeight}\n`);
+              _nextEntryIndex = (entryIndex + 1) % tree.entries.length;
+              success = true;
+              break;
+            } catch (error) {
+              const msg = error instanceof Error ? error.message : String(error);
+              if (
+                msg.includes('already-minted') ||
+                msg.includes('Already minted') ||
+                msg.includes('nullifier already used')
+              ) {
+                console.log(`  ⚠ Entry ${entryIndex + 1} already spent, trying next...`);
+                continue;
+              }
+              // Non-nullifier error — surface and stop
+              console.error(`\n  ❌ Mint failed:`, msg);
+              break;
+            }
+          }
+          if (!success) {
+            console.log('\n  ❌ All allowlist entries have been spent. Generate a new tree and re-deploy.\n');
           }
           break;
         }

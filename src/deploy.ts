@@ -306,12 +306,14 @@ async function main() {
       // fall back to 0n (the old default — circuit assertions will fail).
       let merkleRoot = 0n;
       try {
-        const treeRaw = fs.readFileSync(TREE_DATA_PATH, 'utf-8');
+        // strip BOM if present (PowerShell Set-Content -Encoding utf8 adds one)
+        let treeRaw = fs.readFileSync(TREE_DATA_PATH, 'utf-8');
+        if (treeRaw.charCodeAt(0) === 0xFEFF) treeRaw = treeRaw.slice(1);
         const tree = JSON.parse(treeRaw) as { root: string };
         merkleRoot = BigInt(tree.root);
         console.log(`  Using Merkle root: ${merkleRoot}`);
       } catch {
-        console.warn('  ⚠ tree.json not found — deploying with root=0n. Regenerate with scripts/precompute-tree.ts');
+        console.warn('  ⚠ tree.json not found or parse error — deploying with root=0n. Regenerate with scripts/precompute-tree.ts');
       }
 
       deployed = await deployContract(providers, {

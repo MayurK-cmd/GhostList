@@ -95,9 +95,15 @@ export async function createGhostlistProviders(
     getEncryptionPublicKey: () => shieldedAddresses.shieldedEncryptionPublicKey as any,
     balanceTx: async (tx: any, ttl?: Date) => {
       const serialized = toHex(tx.serialize());
-      const received = await walletApi.balanceUnsealedTransaction(serialized, {
-        payFees: true,
-      });
+      let received: { tx: string };
+      try {
+        received = await walletApi.balanceUnsealedTransaction(serialized, {
+          payFees: true,
+        });
+      } catch (balErr: any) {
+        const balMsg = balErr?.message || balErr?.toString() || "unknown balance error";
+        throw new Error(`wallet balanceUnsealedTransaction failed: ${balMsg}`);
+      }
       return Transaction.deserialize<typeof SignatureEnabled, typeof Proof, typeof Binding>(
         "signature",
         "proof",
@@ -107,10 +113,16 @@ export async function createGhostlistProviders(
     },
   };
 
-  // 9. Midnight provider — just submits via wallet
+  // 9. Midnight provider — submits via wallet
   const midnightProvider: MidnightProvider = {
     submitTx: async (tx: any) => {
-      await walletApi.submitTransaction(toHex(tx.serialize()));
+      const hexTx = toHex(tx.serialize());
+      try {
+        await walletApi.submitTransaction(hexTx);
+      } catch (submitErr: any) {
+        const submitMsg = submitErr?.message || submitErr?.toString() || "unknown submit error";
+        throw new Error(`wallet submitTransaction failed: ${submitMsg}`);
+      }
       return tx.identifiers()[0];
     },
   };

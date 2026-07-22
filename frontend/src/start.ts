@@ -1,3 +1,13 @@
+// Buffer polyfill — MUST be set before any Midnight SDK imports because
+// several Midnight packages (ledger-v8, compact-runtime) reference it at
+// module-load time, even when running in the browser.
+// NOTE: bare specifier "buffer" ensures Vite resolves correctly across
+// both SSR (Node built-in) and client (npm package) builds.
+import { Buffer } from "buffer";
+if (typeof globalThis !== "undefined") {
+  globalThis.Buffer = Buffer;
+}
+
 import { createStart, createMiddleware } from "@tanstack/react-start";
 
 import { renderErrorPage } from "./lib/error-page";
