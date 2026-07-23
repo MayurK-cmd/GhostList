@@ -41,6 +41,7 @@ function MintPage() {
         "not-on-allowlist": "This wallet isn't on the allowlist.",
         "already-minted": "This wallet has already minted a Ghost.",
         "all-entries-spent": "All allowlist entries have been used. Contact the drop organizer.",
+        "proof-server-offline": "Proof server unreachable. The Midnight proof server needs to be running to generate a real ZK proof. Start it with: docker run -p 6300:6300 midnightnetwork/proof-server",
         "mint-failed": "The mint transaction failed. Check the console for details.",
         unknown: "Something went sideways while generating the proof.",
       };
@@ -210,6 +211,10 @@ function ErrorNote({ error, onReset }: { error: string; onReset: () => void }) {
     "already-minted": {
       title: "Already minted",
       body: "The nullifier for this entry has been spent. That's the anti-double-mint guarantee doing its job.",
+    },
+    "proof-server-offline": {
+      title: "Proof server unavailable",
+      body: "Cannot generate a real ZK proof right now — the Midnight proof server is not reachable. Ensure the proof server is running (docker run -p 6300:6300 midnightnetwork/proof-server) or check your network connection.",
     },
     "mint-failed": {
       title: "Mint transaction failed",

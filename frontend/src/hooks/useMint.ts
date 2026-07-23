@@ -10,8 +10,9 @@
  *  6. Wallet balances + submits the transaction
  *  7. On "Already minted", advance to the next entry and retry
  *
- * Falls back to a demo mock flow when the real stack is unavailable
- * (proof server offline, indexer unreachable, etc.).
+ * NOTE: There is no mock/demo fallback. If the proof server is unreachable,
+ * the hook surfaces "proof-server-offline" and stops &#8212; the user sees a
+ * clear error, not a silently-generated fake hash.
  */
 import { useCallback, useState } from "react";
 import { useMidnight } from "@/hooks/useMidnight";
@@ -233,10 +234,12 @@ export function useMint(_address: string | null) {
       } catch (err: any) {
         const msg = err?.message ?? "";
 
-        // If proof server is offline, bail immediately (no point retrying)
+        // If proof server is offline, stop immediately — no silent fallback
         if (msg === "proof-server-offline") {
-          console.warn("proof-server-offline — falling back to demo mock flow");
-          break;
+          console.warn("Proof server unreachable — stopping with visible error");
+          setError("proof-server-offline");
+          setStatus("error");
+          return;
         }
 
         // If this specific nullifier was already used, try the next entry
@@ -280,41 +283,18 @@ export function useMint(_address: string | null) {
       }
     }
 
-    // All entries tried, none worked
+    // All entries tried, none worked &#8212; report the error without a mock fallback
     if (lastError === "already-minted") {
       setError("all-entries-spent");
       setStatus("error");
       return;
     }
 
-    // ── Fallback: demo mock flow ──
-    try {
-      setStatus("proving");
-      const userSecret = crypto.getRandomValues(new Uint8Array(32));
-      const hashOfSecret = new Uint8Array(
-        await crypto.subtle.digest("SHA-256", userSecret),
-      );
-      const nullifier =
-        "0x" +
-        Array.from(hashOfSecret)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-
-      setStatus("minting");
-      const txHashBytes = crypto.getRandomValues(new Uint8Array(32));
-      const txHash =
-        "0x" +
-        Array.from(txHashBytes)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-
-      setResult({ nullifier, txHash });
-      setStatus("success");
-    } catch (fallbackErr: any) {
-      console.error("Mock mint error:", fallbackErr);
-      setError("unknown");
-      setStatus("error");
-    }
+    // If we reach here, the proof server was unreachable (already caught above
+    // with "proof-server-offline") or all entries were spent. No mock fallback
+    // exists — the user sees the error state.
+    setError("proof-server-offline");
+    setStatus("error");
   }, [_address, walletApi]);
 
   const reset = useCallback(() => {
