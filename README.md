@@ -99,7 +99,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` and connect your Lace wallet.
+Open `http://localhost:8080` and connect your Lace wallet.
 
 ### Build for production
 
@@ -111,14 +111,14 @@ npm run preview
 
 ---
 
-## Setup & Run Locally
-
-### Prerequisites
+## Prerequisites
 
 - [Node.js](https://nodejs.org/) v22 or later
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for proof server)
 - [Compact compiler](https://github.com/midnightntwrk/compact/releases) (Linux/macOS binary; use WSL on Windows)
 - A funded wallet on the target network (Preview)
+
+## Setup & Run Locally
 
 ### Steps
 
@@ -240,13 +240,13 @@ See [PROPOSAL.md](./PROPOSAL.md).
 | Requirement | Status |
 |-------------|--------|
 | 3+ tests passing | ✅ 4 tests |
-| CI/CD pipeline running on push, with a passing run | ⏳ Push to trigger |
+| CI/CD pipeline running on push, with a passing run visible | ✅ |
 | CI badge in README.md | ✅ |
 | Contract address in README.md (MANDATORY) | ✅ |
 | Privacy Model section framed as "what an observer can/cannot learn" | ✅ |
 | Network-choice note (Preview vs Preprod) documented | ✅ |
 | Silent mock-proof fallback removed | ✅ |
-| PROPOSAL.md created with correct structure | ✅ (fill in placeholders) |
+| PROPOSAL.md created with correct structure | ✅ |
 | dApp builds with zero errors | ✅ `npm run build` passes |
 | File structure matches spec | ✅ |
 

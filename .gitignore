@@ -54,3 +54,9 @@ frontend/.env.local
 # OS files
 .DS_Store
 Thumbs.db
+
+
+#docs
+BUILT.md
+Level3.md 
+HANDOFF.md
